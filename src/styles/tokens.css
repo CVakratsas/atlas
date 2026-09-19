@@ -53,6 +53,9 @@ html, body, #root {
   color: var(--ink);
   font-family: var(--sans);
   overflow: hidden;
+  /* Dragging the globe downwards must not pull-to-refresh the page on Android, and a
+     panel that scrolls to its end must not start scrolling the document behind it. */
+  overscroll-behavior: none;
 }
 
 body {

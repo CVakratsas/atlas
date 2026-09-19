@@ -8,7 +8,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Euler, Quaternion, Vector3 } from 'three';
-import { clampPitch, distanceForBounds, orientationFor, shortestYaw } from './orientation';
+import {
+  angularSpan, clampPitch, distanceForBounds, halfFov, homeDistance, orientationFor,
+  shortestYaw,
+} from './orientation';
 import { latLonFromLocal } from './picking';
 
 /** The globe's local-space unit vector for a place - the same convention as picking. */
@@ -115,6 +118,73 @@ describe('distanceForBounds', () => {
   it('stays close enough that a continent is worth looking at', () => {
     for (const b of Object.values(B)) {
       expect(distanceForBounds(b)).toBeLessThan(5);
+    }
+  });
+
+  /*
+   * The reason this file changed: the old fit had `Math.max(1, aspect * 0.8)` in it, which
+   * floored the aspect term and framed every portrait window identically. Europe was
+   * placed 758px wide in a 390px viewport - so the game could name a country that was not
+   * on the screen, which is the one thing a find-the-country game cannot do.
+   */
+  const ALL = { ...B, World: [-180, -58, 180, 84] } as const;
+  const PORTRAIT = 390 / 844;
+  const FOV = 42;
+
+  it('actually fits the region on screen, at any shape of window', () => {
+    for (const aspect of [0.42, PORTRAIT, 0.75, 1, 1.6, 2.2]) {
+      const { v, h } = halfFov(FOV, aspect);
+      for (const [name, b] of Object.entries(ALL)) {
+        const d = distanceForBounds(b, aspect, FOV);
+        const span = angularSpan(b);
+        // The far edge of the arc sits at depth cos(half), sin(half) off the axis.
+        for (const [axis, deg, phi] of [['lat', span.lat, v], ['lon', span.lon, h]] as const) {
+          const half = (deg / 2) * (Math.PI / 180);
+          const room = (d - Math.cos(half)) * Math.tan(phi);
+          expect(room, `${name} ${axis} at aspect ${aspect}`)
+            .toBeGreaterThanOrEqual(Math.sin(half));
+        }
+      }
+    }
+  });
+
+  it('pulls further back as the window narrows', () => {
+    for (const b of Object.values(ALL)) {
+      expect(distanceForBounds(b, PORTRAIT)).toBeGreaterThan(distanceForBounds(b, 1.6));
+    }
+  });
+
+  it('leaves the desktop framing where it was', () => {
+    // What the previous empirical fit produced. Replacing it with real frustum maths is
+    // only worth doing if the view people already have does not lurch.
+    const before: Record<string, number> = {
+      Europe: 2.11, Africa: 2.59, Asia: 2.81,
+      NorthAmerica: 2.65, SouthAmerica: 2.52, Oceania: 2.21,
+    };
+    for (const [name, b] of Object.entries(B)) {
+      const now = distanceForBounds(b, 1.6);
+      expect(Math.abs(now - before[name]!) / before[name]!, name).toBeLessThan(0.1);
+    }
+  });
+});
+
+describe('homeDistance', () => {
+  it('reproduces the 3.45 it replaces, at the aspect that constant was chosen for', () => {
+    expect(homeDistance(1.6)).toBeCloseTo(3.46, 2);
+  });
+
+  it('pulls back on a portrait window, where the globe used to overflow the width', () => {
+    // At 3.45 on a 390px-wide screen the globe drew 898px across and read as a wall of
+    // texture rather than a planet.
+    expect(homeDistance(390 / 844)).toBeGreaterThan(6);
+  });
+
+  it('fits the whole planet inside the narrower axis, with room to spare', () => {
+    for (const aspect of [0.42, 0.46, 1, 1.6, 2.2]) {
+      const d = homeDistance(aspect);
+      const { v, h } = halfFov(42, aspect);
+      // The globe subtends asin(1/d); it must sit inside both half-angles.
+      expect(Math.asin(1 / d)).toBeLessThan(Math.min(v, h));
     }
   });
 });

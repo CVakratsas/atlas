@@ -1,5 +1,10 @@
 /* ---- layout ------------------------------------------------------------ */
-.root { position: fixed; inset: 0; background: var(--bg); overflow: hidden; }
+/* `inset: 0` alone resolves against the LARGE viewport on a phone, so the bottom of the
+   app would sit behind the URL bar. 100dvh tracks the viewport as the bar slides. */
+.root {
+  position: fixed; inset: 0; height: 100dvh;
+  background: var(--bg); overflow: hidden;
+}
 
 .globe { position: absolute; inset: 0; }
 
@@ -19,6 +24,10 @@
 .home {
   margin: auto; text-align: center; padding: 24px;
   max-width: 720px; width: 100%;
+  /* A short phone with large type can make this taller than the window, and the root
+     clips. Scrolling inside the panel is the difference between "tight" and "the third
+     mode is unreachable". */
+  max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
 }
 .title {
   font-family: var(--mono); font-size: clamp(30px, 7vw, 52px);
@@ -38,7 +47,9 @@
   transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease),
               background var(--t-fast) var(--ease);
 }
-.card:hover { border-color: var(--line-hi); transform: translateY(-2px); background: rgba(16, 28, 50, .8); }
+@media (hover: hover) {
+  .card:hover { border-color: var(--line-hi); transform: translateY(-2px); background: rgba(16, 28, 50, .8); }
+}
 .card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
 .card p { margin: 0; font-size: 12.5px; color: var(--ink-dim); }
 .cardNum {
@@ -55,16 +66,22 @@
   transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
               background var(--t-fast) var(--ease);
 }
-.scope:hover { border-color: var(--hue, var(--line-hi)); color: var(--hue, var(--ink)); }
 .scope small { color: var(--ink-dim); margin-left: 8px; font-variant-numeric: tabular-nums; }
-.scope:hover small { color: inherit; opacity: .8; }
+/* Guarded: on a touchscreen a :hover rule sticks after the tap, leaving the button lit
+   long after the player has moved on. */
+@media (hover: hover) {
+  .scope:hover { border-color: var(--hue, var(--line-hi)); color: var(--hue, var(--ink)); }
+  .scope:hover small { color: inherit; opacity: .8; }
+}
 
 .back {
   background: none; border: none; color: var(--ink-dim); font: inherit;
   font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
   cursor: pointer; padding: 8px 12px; margin-top: 26px;
 }
-.back:hover { color: var(--ink); }
+@media (hover: hover) {
+  .back:hover { color: var(--ink); }
+}
 
 /* ---- HUD --------------------------------------------------------------- */
 /* Same for the HUD strip - it reads, it does not block. */
@@ -74,6 +91,9 @@
   background: linear-gradient(to bottom, rgba(7, 11, 20, .88), transparent);
 }
 .hud button { pointer-events: auto; }
+/* `.back` carries a 26px top margin for the scope screen, which in a centred HUD row
+   just pushes Quit out of line with the stats. */
+.hud .back { margin-top: 0; }
 .stat { display: flex; flex-direction: column; gap: 1px; }
 .statLabel {
   font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
@@ -99,6 +119,7 @@
   animation: promptIn .34s var(--ease) both;
 }
 @keyframes promptIn { from { opacity: 0; transform: translateY(-10px) scale(.97); } to { opacity: 1; transform: none; } }
+.promptMain { min-width: 0; }
 .promptSub {
   font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px;
@@ -122,13 +143,16 @@
   color: var(--ink-dim); font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
   text-transform: uppercase; padding: 6px 14px; cursor: pointer; margin-top: 12px;
 }
-.skip:hover { color: var(--ink); border-color: var(--line-hi); }
+@media (hover: hover) {
+  .skip:hover { color: var(--ink); border-color: var(--line-hi); }
+}
 
 /* ---- results ----------------------------------------------------------- */
 .results {
   margin: auto; background: var(--panel); border: 1px solid var(--line);
   border-radius: 14px; padding: 30px; max-width: 560px; width: calc(100% - 32px);
   backdrop-filter: blur(16px); text-align: center;
+  max-height: calc(100% - 24px); overflow-y: auto; overscroll-behavior: contain;
   box-shadow: 0 20px 70px rgba(0, 0, 0, .6);
 }
 .results h2 { margin: 0 0 4px; font-size: 24px; font-weight: 600; }
@@ -155,9 +179,11 @@
   font-size: 14px; border: 1px solid var(--line); background: transparent; color: var(--ink);
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
-.btn:hover { border-color: var(--line-hi); background: rgba(255, 255, 255, .05); }
 .btnPrimary { background: var(--accent); border-color: var(--accent); color: #17120a; font-weight: 600; }
-.btnPrimary:hover { background: #ffc352; border-color: #ffc352; }
+@media (hover: hover) {
+  .btn:hover { border-color: var(--line-hi); background: rgba(255, 255, 255, .05); }
+  .btnPrimary:hover { background: #ffc352; border-color: #ffc352; }
+}
 
 /* ---- loading / fallback ------------------------------------------------ */
 .centre {
@@ -165,3 +191,85 @@
   color: var(--ink-dim); font-family: var(--mono); font-size: 11px;
   letter-spacing: .18em; text-transform: uppercase; text-align: center; padding: 24px;
 }
+
+/* ---- phones ------------------------------------------------------------ */
+/*
+ * Two questions, so two queries.
+ *
+ * NARROW is about the home screen's composition: three stacked cards are a tall block,
+ * and centred they land squarely on the planet - which on a phone means covering nearly
+ * all of it. A landscape phone lays the cards out three across and has no such problem.
+ *
+ * NARROW OR SHORT is about the board. The prompt used to float over the middle of it: on
+ * a 375x667 portrait screen it covered the top 22% - Scandinavia, the UK and Ireland in a
+ * Europe round - and on a 390px-tall landscape one, 44%. Along the bottom edge it covers
+ * nothing that is being played, and Skip lands under the thumb.
+ */
+@media (max-width: 759px) {
+  .home {
+    margin: auto 0 0;
+    padding: 20px 16px calc(22px + env(safe-area-inset-bottom));
+  }
+  .tagline { margin-bottom: 20px; }
+  .title { text-shadow: 0 0 40px rgba(76, 194, 255, .45), 0 2px 24px rgba(7, 11, 20, .9); }
+  .modes { gap: 10px; }
+  /* Compact rows rather than stacked blocks: same information, two thirds the height. */
+  .card { padding: 13px 15px; display: grid; grid-template-columns: auto 1fr; column-gap: 12px; }
+  .cardNum { margin-bottom: 0; grid-row: 1 / span 2; align-self: center; }
+  .card h3 { margin: 0; }
+  .card p { line-height: 1.35; }
+
+  .scope { min-height: 44px; display: inline-flex; align-items: center; }
+  .back { min-height: 44px; display: inline-flex; align-items: center; }
+  .results { padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
+  .btn { min-height: 44px; }
+}
+
+@media (max-width: 759px), (max-height: 520px) {
+  .hud {
+    gap: 14px;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  .statLabel { font-size: 9px; letter-spacing: .14em; }
+  .statValue { font-size: 16px; }
+  .hud .back { min-height: 44px; display: inline-flex; align-items: center; }
+
+  .promptWrap {
+    /* `.layer` is a flex column, so this pushes the bar to the bottom edge. */
+    margin-top: auto;
+    padding: 0;
+  }
+  .prompt {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    animation-name: promptUp;
+  }
+  .promptMain {
+    grid-column: 1; grid-row: 1;
+    display: flex; align-items: baseline; gap: 10px; min-width: 0;
+  }
+  .promptSub { margin-bottom: 0; flex: none; }
+  .promptLabel {
+    font-size: clamp(19px, 5.6vw, 27px);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .promptFlag { width: auto; height: 40px; margin: 0; align-self: center; }
+  .feedback { grid-column: 1; grid-row: 2; margin-top: 1px; min-height: 15px; }
+  .skip {
+    grid-column: 2; grid-row: 1 / span 2;
+    margin-top: 0; min-height: 44px; padding: 6px 18px;
+    display: inline-flex; align-items: center;
+  }
+}
+
+/* The card drops in from above; the bar rises from the bottom edge it is attached to. */
+@keyframes promptUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

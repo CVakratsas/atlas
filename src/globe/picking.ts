@@ -203,13 +203,22 @@ export function countryAt(
 ): string | null {
   const { dotRadiusKm = 70, oceanDotRadiusKm = 500, quizzableOnly = false, markedOnly } = opts;
 
-  /** `maxRadius` keeps a big country's marker from stealing a click inside it. */
-  const nearestDot = (within: number, maxRadius = Infinity): string | null => {
+  /**
+   * `maxRadius` keeps a big country's marker from stealing a click inside it. `always` is
+   * the one country exempt from that: the one whose polygon was hit, which has to be able
+   * to defend its own ground - see below.
+   */
+  const nearestDot = (within: number, maxRadius = Infinity, always = ''): string | null => {
     let best: string | null = null;
     let bestDist = within;
     for (const d of index.dots) {
-      if (markedOnly && !markedOnly.has(d.iso)) continue;
-      if (d.radius >= maxRadius) continue;
+      /* `always` is exempt from BOTH filters. A country big enough not to need a marker
+       * is exactly the one a marked neighbour can steal from, so excluding it here is
+       * what let San Marino win a tap in the middle of Italy. */
+      if (d.iso !== always) {
+        if (markedOnly && !markedOnly.has(d.iso)) continue;
+        if (d.radius >= maxRadius) continue;
+      }
       const km = distKm(lon, lat, d.lon, d.lat);
       if (km < bestDist) { bestDist = km; best = d.iso; }
     }
@@ -232,9 +241,16 @@ export function countryAt(
     /* Landed on a country. Only a SMALLER country's marker may argue with that: aiming
      * at Monaco and landing in France is near certain at continent zoom, but France's
      * own marker must never steal a click from inside France. Comparing radii keeps the
-     * rule self-contained, so it holds at any zoom and needs no external state. */
+     * rule self-contained, so it holds at any zoom and needs no external state.
+     *
+     * The country that was hit enters the contest too, and the NEAREST marker wins. Left
+     * out it cannot defend itself, and the radius is in screen pixels - so on a phone,
+     * where the same 9px covers three times the ground, a click in Bologna answered San
+     * Marino: 136 km away, smaller, and nothing ruled it out. Italy's own marker is 59 km
+     * away and settles it. Note the exemption covers a country too big to be SHOWING a
+     * marker, which is exactly the one a marked neighbour can take ground from. */
     const hitRadius = index.features.find((f) => f.iso === hit)?.radius ?? 0;
-    const close = nearestDot(dotRadiusKm, hitRadius);
+    const close = nearestDot(dotRadiusKm, hitRadius, hit);
     return close ?? hit;
   }
 

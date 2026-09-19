@@ -11,6 +11,17 @@ import type { AtlasData } from '../data/load';
 export const isMobile = (): boolean =>
   typeof matchMedia !== 'undefined' && matchMedia('(max-width: 759px)').matches;
 
+/**
+ * Touch or pen rather than a mouse.
+ *
+ * Distinct from `isMobile()` on purpose: that asks how wide the window is, which is the
+ * right question for layout, while how far a gesture may smear and still count as a tap
+ * turns on what is doing the pointing. A touchscreen laptop is not narrow and still needs
+ * the extra slop.
+ */
+export const coarsePointer = (): boolean =>
+  typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
 export const reducedMotion = (): boolean =>
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -62,6 +73,7 @@ export function useGlobe({ data, geo, borderClasses, onPick }: Options) {
       baseUrl: import.meta.env.BASE_URL,
       reducedMotion: reducedMotion(),
       isMobile: isMobile(),
+      coarsePointer: coarsePointer(),
     });
     s.onPick = (iso) => pick.current(iso);
     scene.current = s;

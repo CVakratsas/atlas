@@ -29,7 +29,12 @@ export const SCOPES: Scope[] = [
     bounds: [-82, -56, -34, 13],
     includes: (c) => c.continent === 'Americas' && c.subregion === 'South America',
   },
-  { name: 'Oceania', bounds: [110, -48, 180, 0], includes: (c) => c.continent === 'Oceania' },
+  /* East of the antimeridian on purpose: Kiribati sits at 157W and Samoa at 172W, so a
+   * box stopping at 180 leaves both outside the frame. A desktop window is wide enough to
+   * catch them anyway; a portrait one is not, and they are two of the fourteen. Only the
+   * camera reads these bounds - membership comes from `includes` - so carrying on past
+   * 180 costs nothing. */
+  { name: 'Oceania', bounds: [110, -48, 205, 0], includes: (c) => c.continent === 'Oceania' },
   { name: 'World', bounds: [-180, -58, 180, 84], includes: () => true },
 ];
 

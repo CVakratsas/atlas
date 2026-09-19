@@ -23,6 +23,26 @@ export const MARKER_RADIUS_PX = 9;
  */
 export const BADGE_MAX_PX = 18;
 
+/*
+ * There is deliberately no larger "tap radius" here, and adding one is a mistake that
+ * has been made once already.
+ *
+ * The reasoning that leads to it is sound: a marker is drawn 18px across, and both mobile
+ * platforms put the minimum touch target at 44px. But the hit radius is already in SCREEN
+ * pixels, so it is the same on a phone as on a desktop, and what actually limits how far
+ * off a microstate you can tap is the spacing of its NEIGHBOURS, not the radius. Measured
+ * against the real data, at Europe's framing:
+ *
+ *              San Marino reach     Italy still answers "Italy"
+ *   9px  (now)      110 km                     64% of it
+ *   22px           110 km                     26% of it
+ *
+ * The reach does not move - San Marino and Vatican City are 230 km apart and cap each
+ * other - while Italy loses another 38 points of its own area to markers sitting on top
+ * of it. The answer for microstates on a phone is to pinch in, which costs nobody
+ * anything; a wider invisible target is all cost.
+ */
+
 const EARTH_KM = 6371;
 
 /**

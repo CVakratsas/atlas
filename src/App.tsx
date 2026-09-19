@@ -257,12 +257,16 @@ export function App() {
           {prompt && (
             <div className={s.promptWrap}>
               <div className={s.prompt} key={prompt.iso}>
-                <div className={s.promptSub}>
-                  {mode === 'capitals' ? 'Capital of…' : mode === 'flags' ? 'Whose flag?' : 'Find'}
+                {/* Grouped so the narrow-screen layout can set the whole prompt on one
+                    row beside Skip without needing different markup. */}
+                <div className={s.promptMain}>
+                  <div className={s.promptSub}>
+                    {mode === 'capitals' ? 'Capital of…' : mode === 'flags' ? 'Whose flag?' : 'Find'}
+                  </div>
+                  {mode === 'flags'
+                    ? <img className={s.promptFlag} src={flagUrl(prompt.iso)} alt="" />
+                    : <div className={s.promptLabel}>{prompt.label}</div>}
                 </div>
-                {mode === 'flags'
-                  ? <img className={s.promptFlag} src={flagUrl(prompt.iso)} alt="" />
-                  : <div className={s.promptLabel}>{prompt.label}</div>}
                 <div className={`${s.feedback} ${feedback?.kind === 'wrong' ? s.feedbackWrong : s.feedbackRight}`}>
                   {feedback?.text ?? ''}
                 </div>

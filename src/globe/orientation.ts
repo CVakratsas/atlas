@@ -36,38 +36,86 @@ export function shortestYaw(from: number, to: number): number {
 }
 
 /**
- * Camera distance, in Earth radii, that frames a lon/lat box.
+ * The frustum's half-angles, in radians.
  *
- * The wider the region, the further back the camera sits. Past roughly 140 degrees of
- * span there is nothing useful to frame - you are asking to see more than a hemisphere -
- * which is why the Americas ship as two scopes rather than one.
+ * three.js's `fov` is the VERTICAL field of view; the horizontal one follows from it and
+ * the aspect ratio. Forgetting that is what made this whole file wrong on a phone: at a
+ * desktop aspect of 1.6 the horizontal half-angle is 31.6 degrees, and at a portrait
+ * 0.46 it is 10.1 - a third as wide, from the same camera at the same distance.
+ */
+export function halfFov(fovDeg: number, aspect: number): { v: number; h: number } {
+  const v = (fovDeg / 2) * RAD;
+  return { v, h: Math.atan(Math.tan(v) * aspect) };
+}
+
+/**
+ * Distance from the centre of a unit sphere at which an arc of angular half-span `half`
+ * fits inside a frustum half-angle `phi`.
  *
- * The mapping is empirical rather than derived: the exact framing that looks right
- * depends on field of view and how much margin feels comfortable, and a linear fit over
- * the seven scopes we actually ship is honest about that. The tests pin the properties
- * that matter - monotonic in span, never inside the planet, never so far that a
- * continent is a smudge.
+ * The far edge of the arc sits at depth cos(half) from the centre and sin(half) off the
+ * axis, so it is inside the frustum when sin(half) <= (d - cos(half)) * tan(phi).
+ */
+const fitDistance = (half: number, phi: number): number =>
+  Math.cos(half) + Math.sin(half) / Math.tan(phi);
+
+/**
+ * How wide and how tall a lon/lat box is, in degrees of arc across the globe's face.
+ *
+ * A degree of longitude covers less ground away from the equator, so 70 degrees across
+ * Europe is a far smaller piece of the globe's face than 70 degrees across Africa.
  */
 export function angularSpan(
   bounds: readonly [number, number, number, number],
-  aspect = 1.6,
-): number {
+): { lon: number; lat: number } {
   const [w, s, e, n] = bounds;
-  const lonSpan = Math.min(160, e - w);
-  const latSpan = Math.min(160, n - s);
-  // A degree of longitude covers less ground away from the equator, so 70 degrees across
-  // Europe is a far smaller piece of the globe's face than 70 degrees across Africa.
   const midLat = Math.abs((s + n) / 2) * RAD;
-  const effectiveLon = lonSpan * Math.cos(midLat * 0.8);
-  return Math.max(effectiveLon / Math.max(1, aspect * 0.8), latSpan);
+  return {
+    lon: Math.min(160, e - w) * Math.cos(midLat * 0.8),
+    lat: Math.min(160, n - s),
+  };
 }
 
+/** A little air around the region, rather than its edges flush to the frame. */
+const MARGIN = 1.12;
+
+/**
+ * Camera distance, in Earth radii, that frames a lon/lat box.
+ *
+ * Both axes are fitted and the further of the two wins, so the whole region is on screen
+ * whatever shape the window is. That matters more here than it would in most scenes: a
+ * country the game asks for but does not show is unanswerable.
+ *
+ * This used to be an empirical linear fit with `Math.max(1, aspect * 0.8)` in it, which
+ * floored the aspect term and so framed every portrait window identically - Europe was
+ * placed 758px wide in a 390px viewport, with half of it off screen.
+ */
 export function distanceForBounds(
   bounds: readonly [number, number, number, number],
   aspect = 1.6,
+  fovDeg = 42,
 ): number {
-  const span = angularSpan(bounds, aspect);
-  return Math.min(4.0, Math.max(1.7, 1.52 + (span / 180) * 2.6));
+  const span = angularSpan(bounds);
+  const { v, h } = halfFov(fovDeg, aspect);
+  const d = Math.max(
+    fitDistance((span.lat / 2) * RAD, v),
+    fitDistance((span.lon / 2) * RAD, h),
+  );
+  // The ceiling has to clear `homeDistance` at portrait aspects, or a wide region cannot
+  // be framed at all; the floor keeps the camera outside the planet.
+  return Math.min(7.2, Math.max(1.7, d * MARGIN));
+}
+
+/**
+ * Camera distance for the free-spinning home view: the whole planet, filling about 80% of
+ * whichever frustum half-angle is the smaller.
+ *
+ * The globe's silhouette subtends asin(1/d), so fitting it to a fraction of the frustum
+ * inverts to 1/sin. At a desktop aspect of 1.6 this returns 3.460 - which is where the
+ * 3.45 that used to be hard-coded in two places came from.
+ */
+export function homeDistance(aspect: number, fovDeg = 42): number {
+  const { v, h } = halfFov(fovDeg, aspect);
+  return 1 / Math.sin(Math.min(v, h) * 0.8);
 }
 
 export const clampPitch = (p: number): number =>

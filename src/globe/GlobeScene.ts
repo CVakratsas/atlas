@@ -20,7 +20,9 @@ import { CountryOverlay, type OverlayFeature } from './overlay';
 import { Markers, type MarkerCountry } from './markers';
 import { kmForPixels, MARKER_RADIUS_PX } from './screen';
 import { buildPickIndex, countryAt, latLonFromLocal, sphereVector, type PickIndex } from './picking';
-import { clampPitch, distanceForBounds, orientationFor, shortestYaw } from './orientation';
+import {
+  clampPitch, distanceForBounds, halfFov, homeDistance, orientationFor, shortestYaw,
+} from './orientation';
 import { TARGET, WRONG } from './palette';
 
 const easeInOut = (t: number): number =>
@@ -40,6 +42,8 @@ export interface GlobeInit {
   baseUrl: string;
   reducedMotion: boolean;
   isMobile: boolean;
+  /** Touch or pen. Decides tap slop and how big a hit target has to be. */
+  coarsePointer: boolean;
 }
 
 interface Tween {
@@ -69,7 +73,14 @@ export class GlobeScene {
 
   private yaw = 0;
   private pitch = 0;
-  private distance = 3.45;
+  /* Overwritten by the first resize, which is the first moment the aspect is known. */
+  private distance = homeDistance(1.6);
+  /** The region currently framed, so a resize can re-fit it. null is the home view. */
+  private bounds: readonly [number, number, number, number] | null = null;
+  /** Set once the player zooms by hand: after that a resize must not overrule them. */
+  private userZoomed = false;
+  /** How far the planet is lifted up the screen, in world units. See `homeLift`. */
+  private lift = 0;
   private autoRotate = true;
   private autoSpeed = 0.055;
   private tween: Tween | null = null;
@@ -79,11 +90,22 @@ export class GlobeScene {
   private raf = 0;
   private last = 0;
   private disposed = false;
-  private readonly pointer = { down: false, moved: 0, x: 0, y: 0, t: 0 };
+  private resizeObserver: ResizeObserver | null = null;
+  private readonly coarse: boolean;
+
+  /* Every pointer currently down, by id. A single object could not tell one finger from
+   * two, which is why a pinch used to spin the globe: both fingers drove the rotation. */
+  private readonly pointers = new Map<number, { x: number; y: number }>();
+  private moved = 0;
+  private multiTouch = false;
+  /** Finger separation and midpoint at the last move, for the pinch. */
+  private pinchSpread = 0;
+  private pinchMid = { x: 0, y: 0 };
 
   constructor(init: GlobeInit) {
     this.container = init.container;
     this.reducedMotion = init.reducedMotion;
+    this.coarse = init.coarsePointer;
     this.index = buildPickIndex(init.geo, init.markerCountries);
 
     this.renderer = new WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -104,7 +126,18 @@ export class GlobeScene {
 
     this.attachInput();
     this.resize();
+    /* A ResizeObserver, not just the window event. Mobile browsers do fire `resize` on
+     * rotation, but can report the pre-rotation size when they do - which leaves the
+     * camera's aspect disagreeing with the canvas until something else nudges it, and
+     * that disagreement is a genuinely stretched globe. The observer fires after layout,
+     * with the size the element actually has. */
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(this.resize);
+      this.resizeObserver.observe(this.container);
+    }
     window.addEventListener('resize', this.resize);
+    // The URL bar sliding away changes the viewport without always resizing the element.
+    window.visualViewport?.addEventListener('resize', this.resize);
 
     void this.load(init);
   }
@@ -185,49 +218,113 @@ export class GlobeScene {
     el.addEventListener('pointerdown', this.onDown);
     el.addEventListener('pointermove', this.onMove);
     el.addEventListener('pointerup', this.onUp);
-    el.addEventListener('pointercancel', this.onUp);
+    el.addEventListener('pointercancel', this.onCancel);
     el.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
+  /** Midpoint and separation of the first two fingers down. */
+  private gesture(): { mid: { x: number; y: number }; spread: number } {
+    const [a, b] = [...this.pointers.values()];
+    if (!a || !b) return { mid: { x: a?.x ?? 0, y: a?.y ?? 0 }, spread: 0 };
+    return {
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      spread: Math.hypot(a.x - b.x, a.y - b.y),
+    };
+  }
+
+  /** How far out the camera may pull. Must clear the home view, which grows on a phone. */
+  private maxDistance(): number {
+    return Math.max(6, homeDistance(this.camera.aspect, this.camera.fov) * 1.15);
+  }
+
+  private setDistance(d: number): void {
+    this.distance = Math.max(1.35, Math.min(this.maxDistance(), d));
+    this.userZoomed = true;
+  }
+
+  /** Drag, in screen pixels. Slower when zoomed in, so the gearing feels constant. */
+  private rotateBy(dx: number, dy: number): void {
+    const k = 0.0052 * Math.min(1.4, this.distance / 2.2);
+    this.yaw += dx * k;
+    this.pitch = clampPitch(this.pitch + dy * k);
+  }
+
   private onDown = (e: PointerEvent): void => {
-    this.pointer.down = true;
-    this.pointer.moved = 0;
-    this.pointer.x = e.clientX;
-    this.pointer.y = e.clientY;
-    this.pointer.t = performance.now();
-    this.renderer.domElement.setPointerCapture(e.pointerId);
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pointers.size === 1) {
+      this.moved = 0;
+      this.multiTouch = false;
+    } else {
+      // A second finger: this gesture is a pinch from here on, and never a tap.
+      this.multiTouch = true;
+      const g = this.gesture();
+      this.pinchSpread = g.spread;
+      this.pinchMid = g.mid;
+    }
+    // Capture can be refused - a pointer already released, or a synthetic event - and
+    // this must not abort the handler half way through and strand the gesture state.
+    try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* fine */ }
     this.renderer.domElement.style.cursor = 'grabbing';
   };
 
   private onMove = (e: PointerEvent): void => {
-    if (!this.pointer.down) return;
-    const dx = e.clientX - this.pointer.x;
-    const dy = e.clientY - this.pointer.y;
-    this.pointer.moved += Math.abs(dx) + Math.abs(dy);
-    this.pointer.x = e.clientX;
-    this.pointer.y = e.clientY;
+    const p = this.pointers.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
     // Dragging always wins over autorotation - the player has taken the wheel.
     this.autoRotate = false;
     this.tween = null;
-    const k = 0.0052 * Math.min(1.4, this.distance / 2.2);
-    this.yaw += dx * k;
-    this.pitch = clampPitch(this.pitch + dy * k);
+
+    if (this.pointers.size >= 2) {
+      /* Pinch. Fingers spreading apart pulls the camera in, and the midpoint still turns
+       * the globe, so zooming and aiming are one gesture rather than two. Each finger's
+       * move event moves the midpoint half as far, and both fire, so this composes. */
+      const g = this.gesture();
+      if (this.pinchSpread > 0 && g.spread > 0) {
+        this.setDistance(this.distance * (this.pinchSpread / g.spread));
+      }
+      this.rotateBy(g.mid.x - this.pinchMid.x, g.mid.y - this.pinchMid.y);
+      this.pinchSpread = g.spread;
+      this.pinchMid = g.mid;
+      return;
+    }
+
+    this.moved += Math.abs(dx) + Math.abs(dy);
+    this.rotateBy(dx, dy);
   };
 
   private onUp = (e: PointerEvent): void => {
-    const wasDown = this.pointer.down;
-    this.pointer.down = false;
+    const had = this.pointers.delete(e.pointerId);
     this.renderer.domElement.style.cursor = 'grab';
     try { this.renderer.domElement.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
-    // A drag is not a click. 6px of slop covers a shaky hand without swallowing taps.
-    if (!wasDown || this.pointer.moved > 6) return;
-    this.pick(e.clientX, e.clientY);
+    // Fingers still down: the gesture is not over, and lifting one of them is not a tap.
+    if (this.pointers.size > 0) return;
+
+    /* A drag is not a click, and neither is a pinch. A finger smears further than a mouse
+     * does on the way up, so touch gets more slop than the 6px a pointing device needs. */
+    const slop = this.coarse ? 12 : 6;
+    const tap = had && !this.multiTouch && this.moved <= slop;
+    this.multiTouch = false;
+    this.pinchSpread = 0;
+    if (tap) this.pick(e.clientX, e.clientY);
+  };
+
+  /**
+   * The browser took the gesture away - a system edge swipe, say. Whatever it was, it
+   * ended without the player lifting a finger, so it is not a tap.
+   */
+  private onCancel = (e: PointerEvent): void => {
+    this.multiTouch = true;
+    this.onUp(e);
   };
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     this.tween = null;
-    this.distance = Math.max(1.35, Math.min(6, this.distance + e.deltaY * 0.0016));
+    this.setDistance(this.distance + e.deltaY * 0.0016);
   };
 
   private pick(clientX: number, clientY: number): void {
@@ -248,7 +345,9 @@ export class GlobeScene {
 
     /* The hit area is the marker, converted from the size it is DRAWN at to kilometres
      * at this zoom. Deriving both from one number is what makes the target match what
-     * you can see; the two used to be unrelated constants. */
+     * you can see; the two used to be unrelated constants.
+     *
+     * Touch gets the same radius as a mouse, deliberately - see the note in screen.ts. */
     const height = this.container.clientHeight || 1;
     const dotRadiusKm = kmForPixels(MARKER_RADIUS_PX, this.distance, this.camera.fov, height);
     const marked = this.markers?.visibleSet();
@@ -261,11 +360,39 @@ export class GlobeScene {
   private resize = (): void => {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
+    const aspect = w / h;
+    const reshaped = Math.abs(aspect - this.camera.aspect) > 1e-4;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
+    this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
     this.updateLineResolution();
+    /* A new shape of window needs a new distance: what framed a region in landscape shows
+     * a third of its width in portrait. Skipped mid-flight, and skipped once the player
+     * has zoomed by hand - re-framing over the top of that would be rude. */
+    if (reshaped && !this.tween && !this.userZoomed) this.refit();
   };
+
+  /**
+   * How far to lift the planet up the screen, in world units.
+   *
+   * Portrait home screen only. The menu stacks into the bottom half of a phone, and a
+   * centred planet sits squarely behind it - so the planet centres in the space that is
+   * left instead, which is the composition the desktop layout already has. During a round
+   * this is zero: the board wants the middle of the screen.
+   */
+  private homeLift(): number {
+    if (this.bounds || this.camera.aspect >= 0.9) return 0;
+    const { v } = halfFov(this.camera.fov, this.camera.aspect);
+    // 15% of the visible height, measured at the depth the planet sits at.
+    return 2 * this.distance * Math.tan(v) * 0.15;
+  }
+
+  /** Put the camera where the current view - a region, or the whole planet - wants it. */
+  private refit(): void {
+    this.distance = this.bounds
+      ? distanceForBounds(this.bounds, this.camera.aspect, this.camera.fov)
+      : homeDistance(this.camera.aspect, this.camera.fov);
+  }
 
   /*
    * LineMaterial divides its width by this, so it must be CSS pixels, not the backing
@@ -296,6 +423,12 @@ export class GlobeScene {
     }
 
     if (this.earth) {
+      /* Eased rather than tweened: the lift changes when the player leaves the home view,
+       * which already has a tween of its own, and a second one to keep in step with it
+       * would be more machinery than a one-line follow. */
+      const wanted = this.homeLift();
+      this.lift += (wanted - this.lift) * (this.reducedMotion ? 1 : Math.min(1, dt * 3));
+      this.earth.group.position.y = this.lift;
       this.earth.group.quaternion.setFromEuler(new Euler(this.pitch, this.yaw, 0, 'XYZ'));
       this.earth.clouds.rotation.y += dt * 0.004;
       const shift = uniformsOf(this.earth.surface)['uCloudShift'];
@@ -383,8 +516,12 @@ export class GlobeScene {
     const [w, s, e, n] = bounds;
     const { yaw, pitch } = orientationFor((w + e) / 2, (s + n) / 2);
     const duration = this.reducedMotion ? 0 : (opts.duration ?? 1800);
-    const toDist = distanceForBounds(bounds, this.camera.aspect);
+    const toDist = distanceForBounds(bounds, this.camera.aspect, this.camera.fov);
 
+    // Remembered so a rotation mid-round re-frames the region rather than leaving it
+    // half off the screen.
+    this.bounds = bounds;
+    this.userZoomed = false;
     this.autoRotate = false;
     if (duration === 0) {
       this.yaw = yaw; this.pitch = clampPitch(pitch); this.distance = toDist;
@@ -404,11 +541,13 @@ export class GlobeScene {
 
   /** Back to the free-spinning home pose. */
   reset(): Promise<void> {
+    this.bounds = null;
+    this.userZoomed = false;
     const p = new Promise<void>((resolve) => {
       this.tween = {
         fromYaw: this.yaw, toYaw: this.yaw,
         fromPitch: this.pitch, toPitch: 0.12,
-        fromDist: this.distance, toDist: 3.45,
+        fromDist: this.distance, toDist: homeDistance(this.camera.aspect, this.camera.fov),
         start: performance.now(), duration: this.reducedMotion ? 0 : 900, resolve,
       };
     });
@@ -424,8 +563,11 @@ export class GlobeScene {
     if (!this.earth) return null;
     const local = new Vector3(...sphereVector(lon, lat));
     const world = local.clone().applyQuaternion(this.earth.group.quaternion);
-    // Facing away from the camera means it is on the far side of the planet.
+    // Facing away from the camera means it is on the far side of the planet. Tested
+    // before the lift is added, since the lift moves the whole planet and cannot change
+    // which side of it a place is on.
     if (world.z <= 0.04) return null;
+    world.add(this.earth.group.position);
     const p = world.project(this.camera);
     const rect = this.renderer.domElement.getBoundingClientRect();
     return {
@@ -437,12 +579,14 @@ export class GlobeScene {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.resize);
+    window.visualViewport?.removeEventListener('resize', this.resize);
     const el = this.renderer.domElement;
     el.removeEventListener('pointerdown', this.onDown);
     el.removeEventListener('pointermove', this.onMove);
     el.removeEventListener('pointerup', this.onUp);
-    el.removeEventListener('pointercancel', this.onUp);
+    el.removeEventListener('pointercancel', this.onCancel);
     el.removeEventListener('wheel', this.onWheel);
     this.overlay?.dispose();
     this.borders?.dispose();

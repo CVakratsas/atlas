@@ -141,3 +141,20 @@ describe('badgeVisible / pointVisible', () => {
     expect(badgeVisible(r, d * 0.8, FOV2, H2, false)).toBe(false);
   });
 });
+
+describe('the hit radius is the same on touch as on a mouse', () => {
+  it('reaches about the same number of pixels whatever the window shape', () => {
+    /*
+     * The hit radius is in screen pixels, so a phone framing Europe from 3.78 and a
+     * desktop framing it from 1.99 give the finger the same reach ON SCREEN - which is
+     * the whole reason there is no separate, larger touch radius. The km differ by 3x;
+     * the pixels do not differ at all.
+     */
+    const phone = kmForPixels(MARKER_RADIUS_PX, 3.78, 42, 844);
+    const desktop = kmForPixels(MARKER_RADIUS_PX, 1.99, 42, 900);
+    expect(phone / desktop).toBeGreaterThan(2);       // very different on the ground
+    // ...and the same reach back in pixels, which is what the finger actually has.
+    expect(apparentRadiusPx(phone / 6371, 3.78, 42, 844)).toBeCloseTo(MARKER_RADIUS_PX, 2);
+    expect(apparentRadiusPx(desktop / 6371, 1.99, 42, 900)).toBeCloseTo(MARKER_RADIUS_PX, 2);
+  });
+});

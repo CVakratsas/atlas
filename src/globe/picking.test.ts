@@ -145,6 +145,28 @@ describe('countryAt - microstates', () => {
     expect(countryAt(100.0, 60.0, index)).toBe('RUS');
   });
 
+  it('lets the country under the click defend its own ground', () => {
+    /*
+     * The country that was hit enters the nearest-marker contest on its own behalf -
+     * including when it is too big to be showing a marker, which is exactly the case a
+     * marked neighbour can steal from.
+     *
+     * Bologna is 136 km from San Marino's marker and 59 km from Italy's own. Without this
+     * it answered San Marino, because nothing ruled San Marino out: it is inside the
+     * radius and smaller. With it, the nearer marker wins and the answer is Italy.
+     *
+     * Found on a phone, where the same 9px radius covers three times the ground.
+     */
+    const phone = { dotRadiusKm: 145, markedOnly: new Set(['SMR', 'VAT', 'LIE', 'MCO']) };
+    expect(countryAt(11.0, 44.6, index, phone)).toBe('ITA');    // Bologna
+    expect(countryAt(8.23, 46.80, index, phone)).toBe('CHE');   // central Switzerland
+    expect(countryAt(2.5, 46.7, index, phone)).toBe('FRA');     // middle of France
+
+    // ...and it must not make a microstate unreachable: standing on one still finds it.
+    expect(countryAt(12.46, 43.94, index, phone)).toBe('SMR');
+    expect(countryAt(9.55, 47.17, index, phone)).toBe('LIE');
+  });
+
   it('does not let a microstate swallow its neighbourhood', () => {
     // Rome is ~20km from the Vatican but must still be Italy at a tight radius.
     expect(countryAt(12.60, 41.85, index, { dotRadiusKm: 8 })).toBe('ITA');
