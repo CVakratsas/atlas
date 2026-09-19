@@ -1,0 +1,14 @@
+node_modules
+dist
+
+# Upstream source data: multi-megabyte, re-fetchable with scripts/fetch-data.sh and
+# scripts/fetch-earth.sh. The GENERATED outputs in public/data are committed, so a
+# clean checkout builds and runs without fetching anything.
+scripts/.cache/
+
+# Screenshots taken at the repo root while testing, and Playwright's scratch output.
+/*.png
+.playwright-mcp/
+
+.DS_Store
+*.local

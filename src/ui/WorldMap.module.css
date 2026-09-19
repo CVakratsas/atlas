@@ -1,0 +1,89 @@
+.wrap { position: relative; width: 100%; height: 100%; }
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ocean);
+  touch-action: manipulation;
+}
+
+/* Flat fills. No drop shadows, no gradients on landmasses - the map is information,
+   not decoration. */
+.country {
+  fill: var(--land);
+  stroke: var(--ocean);
+  stroke-width: 0.12;
+  stroke-linejoin: round;
+  transition: fill var(--t-fast) ease;
+}
+
+.interactive { cursor: pointer; }
+.interactive:hover { fill: var(--land-hover); }
+
+/* Greenland, Antarctica and friends: present so the world looks like the world,
+   but visibly not part of the game. */
+.context { fill: var(--land-context); pointer-events: none; }
+
+/* Outside the chosen continent: still drawn, because a continent floating in a void
+   gives the player nothing to orient against, but clearly not in play. */
+.out { fill: var(--land-out); pointer-events: none; }
+
+/* Never quizzed, never a distractor. Drawn with a dashed edge so the ambiguity is
+   visible rather than hidden. See docs/entity-decisions.md. */
+/* The dash says "unresolved" without shouting it. A bright outline would draw more
+   attention to these five than to the 195 the player is actually here to learn. */
+.disputed {
+  fill: var(--land-context);
+  stroke: var(--hull-hi);
+  stroke-width: 0.14;
+  stroke-dasharray: 0.9 0.7;
+  pointer-events: none;
+}
+
+.neighbour { fill: var(--land-neighbour); }
+.correct { fill: var(--correct); }
+.wrong { fill: var(--wrong); }
+.selected { fill: var(--amber); }
+
+/* Countries too small to have a polygon at this resolution still have to be playable,
+   so they get a dot with a real hit target. */
+.dot {
+  fill: var(--land-hover);
+  stroke: var(--ocean);
+  stroke-width: 0.15;
+  cursor: pointer;
+  transition: fill var(--t-fast) ease;
+}
+.dot:hover { fill: var(--metal); }
+.dot.selected, .dot.correct { fill: var(--amber); }
+.dot.wrong { fill: var(--wrong); }
+
+.country:focus-visible, .dot:focus-visible {
+  outline: none;
+  fill: var(--amber);
+  stroke: var(--ink);
+  stroke-width: 0.4;
+}
+
+.label {
+  font-family: var(--mono);
+  fill: var(--ink-soft);
+  paint-order: stroke;
+  stroke: var(--ocean);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+  text-anchor: middle;
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
