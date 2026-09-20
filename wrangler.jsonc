@@ -1,0 +1,53 @@
+/*
+ * Cloudflare Workers config.
+ *
+ * Atlas is a static site with no server code: there is no `main`, so the Worker is
+ * nothing but the asset store and requests are served straight from it.
+ *
+ * Every value here MIRRORS the Worker as it was already deployed by hand, so connecting
+ * the repo to Workers Builds changes how deploys happen and not what gets served. Wrangler
+ * treats this file as the source of truth and will overwrite settings made in the
+ * dashboard, so anything changed there in future has to be copied back here.
+ *
+ * `name` must match the Worker in the dashboard exactly or the build fails - which is the
+ * good failure, since the alternative would be silently creating a second Worker on a
+ * different URL.
+ */
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "atlas",
+
+  /*
+   * Pinned to the date the Worker was first deployed, not to today. Moving it changes
+   * runtime behaviour, so it is a deliberate edit with a test behind it, never a drive-by
+   * refresh. See https://developers.cloudflare.com/workers/configuration/compatibility-dates/
+   */
+  "compatibility_date": "2026-09-18",
+
+  "assets": {
+    "directory": "./dist",
+
+    /*
+     * Serves index.html for any path that is not a file.
+     *
+     * This mirrors what is live, but be aware of how it interacts with `base: './'` in
+     * vite.config.ts: index.html references its bundle as ./assets/index-*.js, so under a
+     * nested URL that resolves to /foo/assets/index-*.js, which is also not a file, and
+     * the SPA rule hands back index.html again. The browser then gets HTML where it asked
+     * for JavaScript. Verified against the live Worker:
+     *
+     *   /foo/assets/index-uZY4xwZV.js  ->  200 text/html
+     *
+     * Atlas has no client-side routing - no router, no paths, the whole game is state -
+     * so this rule has nothing to do for it. "none" would 404 a bad path cleanly instead.
+     * Left as it is because it is what was already deployed; changing it is a one-word
+     * edit whenever you want it.
+     */
+    "not_found_handling": "single-page-application"
+  },
+
+  // Already enabled on the live Worker. Without it here, the first deploy would turn it off.
+  "observability": {
+    "enabled": true
+  }
+}

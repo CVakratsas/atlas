@@ -13,3 +13,4 @@ scripts/.cache/
 .DS_Store
 *.local
 tsconfig.tsbuildinfo
+.wrangler/
