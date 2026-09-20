@@ -28,22 +28,24 @@
     "directory": "./dist",
 
     /*
-     * Serves index.html for any path that is not a file.
+     * A path that is not a file gets a plain 404.
      *
-     * This mirrors what is live, but be aware of how it interacts with `base: './'` in
-     * vite.config.ts: index.html references its bundle as ./assets/index-*.js, so under a
-     * nested URL that resolves to /foo/assets/index-*.js, which is also not a file, and
-     * the SPA rule hands back index.html again. The browser then gets HTML where it asked
-     * for JavaScript. Verified against the live Worker:
+     * NOT "single-page-application", which was the setting this Worker was first deployed
+     * with. That rule serves index.html for anything that is not a file, which is right
+     * for an app with client-side routes and wrong here twice over.
+     *
+     * Atlas has no routing at all - no router, no paths, the whole game is state - so
+     * there is no deep link for the rule to rescue. And it actively broke nested URLs:
+     * `base: './'` in vite.config.ts makes index.html reference its bundle as
+     * ./assets/index-*.js, so under /foo/ that resolves to /foo/assets/index-*.js, which
+     * is also not a file, so the rule handed back index.html again. The browser asked for
+     * JavaScript and got HTML. Measured against the live Worker before the change:
      *
      *   /foo/assets/index-uZY4xwZV.js  ->  200 text/html
      *
-     * Atlas has no client-side routing - no router, no paths, the whole game is state -
-     * so this rule has nothing to do for it. "none" would 404 a bad path cleanly instead.
-     * Left as it is because it is what was already deployed; changing it is a one-word
-     * edit whenever you want it.
+     * A blank page with a console error, where a 404 is the honest answer.
      */
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "none"
   },
 
   // Already enabled on the live Worker. Without it here, the first deploy would turn it off.
