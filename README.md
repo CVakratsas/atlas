@@ -30,6 +30,20 @@ npm run build
 The data in `public/data/` is committed, so a clean checkout runs offline. To regenerate
 it from upstream: `bash scripts/fetch-data.sh && npm run data`.
 
+## Deploying
+
+Live at [atlas.c-vakratsas.workers.dev](https://atlas.c-vakratsas.workers.dev), on a
+Cloudflare Worker that serves static assets and runs no server code of its own.
+
+Pushing to `main` builds and deploys it. Cloudflare Workers Builds watches the repo and
+runs `npm run build`, then `npx wrangler deploy`; there is no GitHub Actions workflow and
+no API token held in GitHub. `wrangler.jsonc` is what the deploy step reads, and it is
+authoritative — Wrangler will overwrite settings changed in the Cloudflare dashboard, so
+change them here instead.
+
+To deploy by hand: `npm run build && npm run deploy`, or `npm run deploy:dry` to check the
+packaging without uploading.
+
 ## Where things are
 
 ```
