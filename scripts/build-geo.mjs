@@ -18,6 +18,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ABSORBED_INTO } from './overrides.mjs';
+import { allRings, angularRadius, roundCoords, segmentKey } from './lib/geo.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -35,8 +36,7 @@ const neIso = (p) => {
   }
   return null;
 };
-const P = 1e3;
-const round = (c) => Array.isArray(c[0]) ? c.map(round) : [Math.round(c[0] * P) / P, Math.round(c[1] * P) / P];
+const round = roundCoords;
 
 /* Three kinds of feature, because they are drawn differently:
  *   quiz     - one of the 195; clickable, the fill carries its state
@@ -69,11 +69,8 @@ writeFileSync(join(dataDir, 'world-simplified.geojson'), JSON.stringify(geo, nul
  * key over the endpoint pair matches them. This is the same shared-vertex trick
  * build-adjacency.mjs uses to derive the neighbour graph.
  */
-const ringsOf = (g) => g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : [];
-const key = (a, b) => {
-  const ka = `${a[0]},${a[1]}`, kb = `${b[0]},${b[1]}`;
-  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-};
+const ringsOf = allRings;
+const key = segmentKey;
 
 const owners = new Map();
 /* How many times a segment appears at all. Two appearances with one owner means two
@@ -139,26 +136,10 @@ for (const f of features) {
  * Cape Verde in and Luxembourg out purely because of which ones Natural Earth's 110m set
  * happened to omit.
  */
-const RAD = Math.PI / 180;
-function ringAreaSr(ring) {
-  let meanLat = 0;
-  for (const p of ring) meanLat += p[1];
-  meanLat = (meanLat / ring.length) * RAD;
-  const kx = Math.cos(meanLat);
-  let a = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xj = ring[j][0] * RAD * kx, yj = ring[j][1] * RAD;
-    const xi = ring[i][0] * RAD * kx, yi = ring[i][1] * RAD;
-    a += xj * yi - xi * yj;
-  }
-  return Math.abs(a / 2);
-}
 const radii = {};
 for (const f of features) {
-  let biggest = 0;
-  for (const ring of ringsOf(f.geometry)) biggest = Math.max(biggest, ringAreaSr(ring));
-  const r = Math.sqrt(biggest / Math.PI);
-  radii[f.properties.iso] = Math.max(radii[f.properties.iso] ?? 0, Number(r.toFixed(6)));
+  const r = angularRadius(f.geometry);
+  radii[f.properties.iso] = Math.max(radii[f.properties.iso] ?? 0, r);
 }
 
 writeFileSync(join(dataDir, 'borders.json'), JSON.stringify({ classes, radii }));

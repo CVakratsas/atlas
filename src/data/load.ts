@@ -49,3 +49,44 @@ export function quizPool(data: AtlasData, continents?: readonly string[]): Count
 }
 
 export const flagUrl = (iso: string): string => `${base}/flags/${iso}.svg`;
+
+/** One US state, as built by scripts/build-states.mjs. `iso` is ISO 3166-2, e.g. US-CO. */
+export interface UsState {
+  iso: string;
+  postal: string;
+  name: string;
+  /** null only for DC, which is drawn but not quizzed. */
+  capital: string | null;
+  quizzable: boolean;
+  labelPoint: [number, number];
+  /** Angular radius of the largest landmass - decides whether it needs a marker. */
+  radius: number;
+}
+
+export interface StatesData {
+  all: UsState[];
+  quizzable: UsState[];
+  byIso: Map<string, UsState>;
+  geo: unknown;
+  /** Border classes per feature and ring: '1' drawn, '-' left to the country layer. */
+  classes: string[][];
+}
+
+let statesCache: Promise<StatesData> | null = null;
+
+export function loadStatesData(): Promise<StatesData> {
+  statesCache ??= (async () => {
+    const [meta, geo] = await Promise.all([
+      json<{ states: UsState[]; classes: string[][] }>('us-states.json'),
+      json<unknown>('us-states.geojson'),
+    ]);
+    return {
+      all: meta.states,
+      quizzable: meta.states.filter((s) => s.quizzable),
+      byIso: new Map(meta.states.map((s) => [s.iso, s])),
+      geo,
+      classes: meta.classes,
+    };
+  })();
+  return statesCache;
+}

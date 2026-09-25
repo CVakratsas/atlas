@@ -26,8 +26,16 @@ export const WRONG = '#FF4D5E';
 export const TARGET = '#FFFFFF';
 export const SPACE = '#070B14';
 
+/*
+ * The US states' own colour. Warm and lively, and clear of every continent's hue - but it
+ * sits between Africa's amber and the wrong-click red, so it is a coral rather than
+ * either, and a wrong answer still reads as a different, harder red.
+ */
+export const US_HUE = '#FF7A45';
+
 /** Scope name -> the hue that identifies that round. */
 export function scopeHue(scope: string): string {
+  if (scope === 'United States') return US_HUE;
   if (scope === 'North America' || scope === 'South America') return CONTINENT_HUE['Americas']!;
   return CONTINENT_HUE[scope] ?? '#4CC2FF';
 }

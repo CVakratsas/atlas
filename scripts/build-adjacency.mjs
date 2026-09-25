@@ -11,6 +11,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ABSORBED_INTO } from './overrides.mjs';
+import { labelPoint, outerRings, planarArea, pointInRing } from './lib/geo.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -41,53 +42,10 @@ function haversine(a, b) {
   const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
-const ringsOf = (geom) =>
-  geom.type === 'Polygon' ? [geom.coordinates[0]]
-  : geom.type === 'MultiPolygon' ? geom.coordinates.map((p) => p[0])
-  : [];
-const ringArea = (r) => {
-  let a = 0;
-  for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += r[j][0] * r[i][1] - r[i][0] * r[j][1];
-  return Math.abs(a / 2);
-};
-function pointInRing(pt, r) {
-  let inside = false;
-  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-    const [xi, yi] = r[i], [xj, yj] = r[j];
-    if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-/* Distance from a point to the ring's boundary, negative outside. */
-function signedDist(pt, r) {
-  let min = Infinity;
-  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-    const [ax, ay] = r[j], [bx, by] = r[i];
-    let t = ((pt[0] - ax) * (bx - ax) + (pt[1] - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2 || 1);
-    t = Math.max(0, Math.min(1, t));
-    min = Math.min(min, Math.hypot(pt[0] - (ax + t * (bx - ax)), pt[1] - (ay + t * (by - ay))));
-  }
-  return pointInRing(pt, r) ? min : -min;
-}
-/* Pole of inaccessibility of the LARGEST ring — not the multipolygon centroid, which
- * puts the USA in the Pacific, Norway in Svalbard and France in the Atlantic, and
- * lands concave countries like Croatia and Chile inside a neighbour. */
-function labelPoint(rings) {
-  const r = rings.reduce((a, b) => (ringArea(b) > ringArea(a) ? b : a));
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const [x, y] of r) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
-  let best = [(minX + maxX) / 2, (minY + maxY) / 2], bestD = signedDist(best, r);
-  let step = Math.max(maxX - minX, maxY - minY) / 8;
-  for (let pass = 0; pass < 8; pass++) {          // coarse grid, then refine around the winner
-    for (let x = best[0] - step * 2; x <= best[0] + step * 2; x += step)
-      for (let y = best[1] - step * 2; y <= best[1] + step * 2; y += step) {
-        const d = signedDist([x, y], r);
-        if (d > bestD) { bestD = d; best = [x, y]; }
-      }
-    step /= 2;
-  }
-  return [Math.round(best[0] * 1e4) / 1e4, Math.round(best[1] * 1e4) / 1e4];
-}
+/* Ring helpers and the label-point search live in lib/geo.mjs, shared with the
+ * US-states build so both layers place markers by the same rule. */
+const ringsOf = outerRings;
+const ringArea = planarArea;
 
 // --- index the 50m geometry -----------------------------------------------------
 const geom = new Map();

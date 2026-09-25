@@ -186,4 +186,27 @@ describe('scoring', () => {
     expect(accuracy(s)).toBeCloseTo(0.5, 6);
     expect(accuracy(fresh())).toBe(1);
   });
+  describe('a tap outside the round', () => {
+    const inRound = (iso: string) => order.includes(iso);
+
+    it('costs nothing, keeps the streak, and names what was tapped', () => {
+      let s = click(fresh(), 'FRA', 0, isPlayable, inRound).state;   // correct, streak 1
+      const { state, result } = click(s, 'EGY', 0, isPlayable, inRound);
+      expect(result).toEqual({ kind: 'ignored', reason: 'out-of-round', iso: 'EGY' });
+      expect(state).toBe(s);   // untouched: score, streak, missed all as they were
+      s = state;
+      expect(s.streak).toBe(1);
+    });
+
+    it('still makes a wrong country INSIDE the round cost points', () => {
+      const s = fresh();
+      const wrong = order.find((iso) => iso !== currentTarget(s))!;
+      const { result } = click(s, wrong, 0, isPlayable, inRound);
+      expect(result.kind).toBe('wrong');
+    });
+
+    it('is optional - without the predicate the old rule stands', () => {
+      expect(click(fresh(), 'EGY', 0, isPlayable).result.kind).toBe('wrong');
+    });
+  });
 });

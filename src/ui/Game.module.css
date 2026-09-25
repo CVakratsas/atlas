@@ -4,7 +4,14 @@
 .root {
   position: fixed; inset: 0; height: 100dvh;
   background: var(--bg); overflow: hidden;
+  /* No browser gestures anywhere in the app. Only the canvas used to have this, so a
+     pinch that started on the menu, a button or the prompt bar zoomed the whole PAGE -
+     and the UI stayed broken until you pinched back out. The globe has its own zoom.
+     Panels that genuinely scroll opt back in to vertical panning below. */
+  touch-action: none;
 }
+/* A tap is a tap: no 300ms wait for a possible double-tap-to-zoom. */
+.root button { touch-action: manipulation; }
 
 .globe { position: absolute; inset: 0; }
 
@@ -23,12 +30,14 @@
 /* ---- home -------------------------------------------------------------- */
 .home {
   margin: auto; text-align: center; padding: 24px;
-  max-width: 720px; width: 100%;
+  max-width: 880px; width: 100%;
+  touch-action: pan-y;
   /* A short phone with large type can make this taller than the window, and the root
      clips. Scrolling inside the panel is the difference between "tight" and "the third
      mode is unreachable". */
   max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
 }
+.titleSmall { font-size: clamp(22px, 4vw, 30px) !important; }
 .title {
   font-family: var(--mono); font-size: clamp(30px, 7vw, 52px);
   letter-spacing: .34em; text-transform: uppercase; margin: 0 0 6px; font-weight: 400;
@@ -37,10 +46,14 @@
 }
 .tagline { color: var(--ink-dim); font-size: 14px; margin: 0 0 34px; letter-spacing: .02em; }
 
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 900px) { .modes { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 660px) { .modes { grid-template-columns: 1fr; } }
 
 .card {
+  /* Top-aligned: a button centres its content by default, so a card with a one-line
+     blurb sat lower than its neighbours with two. */
+  display: flex; flex-direction: column; justify-content: flex-start;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   padding: 20px 16px; cursor: pointer; text-align: left; color: var(--ink);
   font: inherit; backdrop-filter: blur(10px);
@@ -54,8 +67,15 @@
 .card p { margin: 0; font-size: 12.5px; color: var(--ink-dim); }
 .cardNum {
   font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
-  color: var(--accent); display: block; margin-bottom: 10px;
+  color: var(--card-accent, var(--accent)); display: block; margin-bottom: 10px;
 }
+/* The US card carries its own colour, so it reads as a different game, not a fourth
+   world mode. */
+.cardUs { border-color: color-mix(in srgb, var(--card-accent) 30%, var(--line)); }
+@media (hover: hover) {
+  .cardUs:hover { border-color: var(--card-accent); }
+}
+.card:disabled { opacity: .45; cursor: default; transform: none; }
 
 /* ---- scope picker ------------------------------------------------------ */
 .scopes { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
@@ -94,6 +114,25 @@
 /* `.back` carries a 26px top margin for the scope screen, which in a centred HUD row
    just pushes Quit out of line with the stats. */
 .hud .back { margin-top: 0; }
+
+/* Recentre: back to the round's framing after zooming or wandering off. */
+.iconBtn {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 999px; padding: 0;
+  background: none; border: 1px solid var(--line); color: var(--ink-dim); cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+@media (hover: hover) {
+  .iconBtn:hover { color: var(--ink); border-color: var(--line-hi); }
+}
+
+/* The first tap on Quit only asks. Red, because the next tap throws the round away. */
+.quitArmed {
+  color: var(--wrong) !important;
+  border: 1px solid color-mix(in srgb, var(--wrong) 55%, transparent) !important;
+  border-radius: 999px;
+}
 .stat { display: flex; flex-direction: column; gap: 1px; }
 .statLabel {
   font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
@@ -136,6 +175,8 @@
 }
 .feedbackWrong { color: var(--wrong); }
 .feedbackRight { color: var(--found); }
+/* Not a mistake, so neither green nor red: a tap outside the round is only a note. */
+.feedbackInfo { color: var(--ink-soft); }
 
 .skip {
   pointer-events: auto;
@@ -149,6 +190,7 @@
 
 /* ---- results ----------------------------------------------------------- */
 .results {
+  touch-action: pan-y;
   margin: auto; background: var(--panel); border: 1px solid var(--line);
   border-radius: 14px; padding: 30px; max-width: 560px; width: calc(100% - 32px);
   backdrop-filter: blur(16px); text-align: center;
@@ -160,14 +202,21 @@
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 26px 0; }
 @media (max-width: 520px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 .grid .statValue { font-size: 22px; }
-.best { color: var(--accent); font-family: var(--mono); font-size: 12px; margin-bottom: 18px; }
+.best {
+  color: var(--ink-dim); font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; margin: -12px 0 20px;
+}
+.bestNew { color: var(--accent); }
 
 .missed { text-align: left; margin: 0 0 22px; }
 .missed h4 {
   font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
   color: var(--ink-dim); margin: 0 0 8px; font-weight: 400;
 }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 108px; overflow-y: auto; }
+.chips {
+  display: flex; flex-wrap: wrap; gap: 6px; max-height: 108px; overflow-y: auto;
+  touch-action: pan-y;
+}
 .chip {
   background: rgba(255, 77, 94, .12); border: 1px solid rgba(255, 77, 94, .35);
   color: #FFC2C8; border-radius: 999px; padding: 3px 10px; font-size: 12px;
@@ -234,6 +283,8 @@
   .statLabel { font-size: 9px; letter-spacing: .14em; }
   .statValue { font-size: 16px; }
   .hud .back { min-height: 44px; display: inline-flex; align-items: center; }
+  .iconBtn { width: 44px; height: 44px; }
+  .hud { gap: 12px; }
 
   .promptWrap {
     /* `.layer` is a flex column, so this pushes the bar to the bottom edge. */
@@ -273,3 +324,7 @@
 
 /* The card drops in from above; the bar rises from the bottom edge it is attached to. */
 @keyframes promptUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* On the narrowest phones the streak would push Quit off the row. It is a nicety; time,
+   score, found, recentre and quit are not. */
+@media (max-width: 379px) { .streakStat { display: none; } }

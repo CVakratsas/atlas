@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { GlobeScene } from './GlobeScene';
-import type { AtlasData } from '../data/load';
+import type { AtlasData, StatesData } from '../data/load';
 
 export const isMobile = (): boolean =>
   typeof matchMedia !== 'undefined' && matchMedia('(max-width: 759px)').matches;
@@ -37,11 +37,13 @@ export function hasWebGL(): boolean {
 interface Options {
   data: AtlasData | null;
   geo: unknown;
-  borderClasses: { radii: Record<string, number> } | null;
+  borderClasses: { classes: string[][]; radii: Record<string, number> } | null;
+  /** The US states layer. Null while loading, or if it failed - the world game is unaffected. */
+  states: StatesData | null;
   onPick: (iso: string | null) => void;
 }
 
-export function useGlobe({ data, geo, borderClasses, onPick }: Options) {
+export function useGlobe({ data, geo, borderClasses, states, onPick }: Options) {
   const mount = useRef<HTMLDivElement | null>(null);
   const scene = useRef<GlobeScene | null>(null);
   const [ready, setReady] = useState(false);
@@ -65,11 +67,20 @@ export function useGlobe({ data, geo, borderClasses, onPick }: Options) {
 
     const s = new GlobeScene({
       container: mount.current,
-      geo: geo as never,
-      borderClasses: borderClasses as never,
-      adjacency,
-      markerCountries,
-      neutral: new Set(data.all.filter((c) => !c.quizzable).map((c) => c.iso)),
+      world: {
+        geo: geo as never,
+        borderClasses,
+        markers: markerCountries,
+        neutral: new Set(data.all.filter((c) => !c.quizzable).map((c) => c.iso)),
+      },
+      ...(states ? {
+        states: {
+          geo: states.geo as never,
+          borderClasses: { classes: states.classes },
+          markers: states.quizzable.map((st) => ({ iso: st.iso, labelPoint: st.labelPoint, radius: st.radius })),
+          neutral: new Set(states.all.filter((st) => !st.quizzable).map((st) => st.iso)),
+        },
+      } : {}),
       baseUrl: import.meta.env.BASE_URL,
       reducedMotion: reducedMotion(),
       isMobile: isMobile(),
@@ -87,7 +98,7 @@ export function useGlobe({ data, geo, borderClasses, onPick }: Options) {
       scene.current = null;
       setReady(false);
     };
-  }, [data, geo, borderClasses]);
+  }, [data, geo, borderClasses, states]);
 
   return { mount, scene, ready };
 }

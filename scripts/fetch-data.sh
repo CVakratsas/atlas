@@ -18,6 +18,8 @@ fetch "https://cdn.jsdelivr.net/npm/world-countries@5/countries.json" world-coun
 fetch "$NE/ne_110m_admin_0_countries.geojson"      ne_110m_admin_0_countries.geojson
 fetch "$NE/ne_50m_admin_0_countries.geojson"       ne_50m_admin_0_countries.geojson
 fetch "$NE/ne_110m_admin_0_boundary_lines_land.geojson" ne_110m_boundary_lines.geojson
+# US states, for the states mode. Same 50m resolution as the countries.
+fetch "$NE/ne_50m_admin_1_states_provinces.geojson" ne_50m_admin_1_states_provinces.geojson
 
 echo "Flags (one SVG per ISO, from flag-icons, MIT):"
 node build-flags.mjs

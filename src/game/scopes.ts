@@ -38,8 +38,22 @@ export const SCOPES: Scope[] = [
   { name: 'World', bounds: [-180, -58, 180, 84], includes: () => true },
 ];
 
+/*
+ * The US game's one and only region. Kept out of SCOPES because it is not a choice on
+ * the world picker - its places are states, not countries, so `includes` never matches.
+ *
+ * Alaska and Hawaii are framed in with the lower 48, by the same fit-everything rule as
+ * every other round: a state the game asks for must be on the screen. The western edge
+ * stops short of the far Aleutians, which are Alaska's anyway.
+ */
+export const US_SCOPE: Scope = {
+  name: 'United States',
+  bounds: [-168, 18, -66, 72],
+  includes: () => false,
+};
+
 export const scopeByName = (name: string): Scope =>
-  SCOPES.find((s) => s.name === name) ?? SCOPES[0]!;
+  name === US_SCOPE.name ? US_SCOPE : SCOPES.find((s) => s.name === name) ?? SCOPES[0]!;
 
 export const countriesInScope = (all: Country[], scope: Scope): Country[] =>
   all.filter((c) => c.quizzable && scope.includes(c));

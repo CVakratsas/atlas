@@ -53,7 +53,9 @@ export const currentTarget = (s: RoundState): string | null =>
 export type ClickResult =
   | { kind: 'correct'; iso: string; gained: number }
   | { kind: 'wrong'; iso: string; lost: number }
-  | { kind: 'ignored'; reason: 'ocean' | 'already-found' | 'not-playable' | 'round-over' };
+  | { kind: 'ignored'; reason: 'ocean' | 'already-found' | 'not-playable' | 'round-over' }
+  /** A real place, but not one this round is about - Spain in an Africa round. */
+  | { kind: 'ignored'; reason: 'out-of-round'; iso: string };
 
 export interface ClickOutcome { state: RoundState; result: ClickResult }
 
@@ -70,14 +72,20 @@ export function speedBonusFor(elapsedMs: number): number {
  * Apply a click.
  *
  * `iso` is null for the ocean or the far side of the globe. A misclick is not a mistake
- * and is never punished - only a click on a real, playable, not-yet-found country that
+ * and is never punished - only a click on a real, playable, not-yet-found place that
  * is not the target counts as wrong.
+ *
+ * `inRound`, when given, narrows that further to the places this round is about. A tap
+ * on Spain during an Africa round is almost always a finger landing just past the edge
+ * of the lit region - on a phone, routinely - and costing 50 points for it teaches
+ * nothing. It is ignored, and the caller says so.
  */
 export function click(
   state: RoundState,
   iso: string | null,
   now: number,
   isPlayable: (iso: string) => boolean,
+  inRound?: (iso: string) => boolean,
 ): ClickOutcome {
   if (state.done) return { state, result: { kind: 'ignored', reason: 'round-over' } };
   if (iso === null) return { state, result: { kind: 'ignored', reason: 'ocean' } };
@@ -87,6 +95,9 @@ export function click(
   // Kosovo, Taiwan and the rest are on the map but are never targets and never penalties.
   if (!isPlayable(iso)) {
     return { state, result: { kind: 'ignored', reason: 'not-playable' } };
+  }
+  if (inRound && !inRound(iso)) {
+    return { state, result: { kind: 'ignored', reason: 'out-of-round', iso } };
   }
 
   const target = currentTarget(state);

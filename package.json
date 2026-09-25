@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "data": "node scripts/build-countries.mjs && node scripts/build-geo.mjs && node scripts/build-flags.mjs && node scripts/build-adjacency.mjs"
+    "data": "node scripts/build-countries.mjs && node scripts/build-geo.mjs && node scripts/build-flags.mjs && node scripts/build-adjacency.mjs && node scripts/build-states.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",

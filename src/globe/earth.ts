@@ -56,9 +56,33 @@ export function pickColorMap(q: EarthQuality): { file: string; label: string } {
   return { file: 'color_8k.jpg', label: '8K' };
 }
 
+/**
+ * The FIRST colour map to load: always the 4K one.
+ *
+ * The planet cannot appear until its colour map has arrived, and on desktop that used to
+ * mean waiting for the full 6.6 MB 8K file - several seconds of empty starfield on an
+ * ordinary connection. The 4K map is a quarter of that and looks right at the home view;
+ * `loadColorMap` swaps the 8K one in afterwards, where `pickColorMap` says it is wanted.
+ */
+const FIRST_COLOR = 'color_4k.jpg';
+
+/** Load one colour map on its own, for the upgrade that follows first paint. */
+export async function loadColorMap(base: string, file: string, maxAnisotropy: number): Promise<Texture | null> {
+  try {
+    const t = await new TextureLoader().loadAsync(`${base}textures/earth/${file}`);
+    t.colorSpace = SRGBColorSpace;
+    t.wrapS = RepeatWrapping;
+    t.anisotropy = maxAnisotropy;
+    return t;
+  } catch {
+    // The 4K map is already on screen; failing to upgrade is not worth an error.
+    return null;
+  }
+}
+
 export async function loadEarthMaps(base: string, q: EarthQuality): Promise<EarthMaps> {
   const loader = new TextureLoader();
-  const colour = pickColorMap(q);
+  const colour = { file: FIRST_COLOR };
   const urls = {
     day: `${base}textures/earth/${colour.file}`,
     night: `${base}textures/earth/night_2k.jpg`,
